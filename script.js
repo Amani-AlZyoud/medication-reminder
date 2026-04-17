@@ -20,10 +20,13 @@ enableNotifBtn.addEventListener('click', async () => {
     if (permission === 'granted') {
         enableNotifBtn.textContent = '✅ الإشعارات مُفعّلة';
         enableNotifBtn.classList.add('enabled');
-        new Notification('💊 مُذكِّر الأدوية', {
-            body: 'ممتاز! سنُذكِّرك بأدويتك في أوقاتها.',
-            icon: '💊'
-        });
+        try {
+            new Notification('💊 مُذكِّر الأدوية', {
+                body: 'ممتاز! سنُذكِّرك بأدويتك في أوقاتها.'
+            });
+        } catch (e) { console.log(e); }
+    } else {
+        alert('لم يتم السماح بالإشعارات. الرجاء تفعيلها من إعدادات المتصفح.');
     }
 });
 
@@ -35,20 +38,25 @@ if ('Notification' in window && Notification.permission === 'granted') {
 // ===== إضافة دواء جديد =====
 medForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const newMed = {
-        id: Date.now(),
-        name: document.getElementById('medName').value.trim(),
-        dose: document.getElementById('medDose').value.trim(),
-        time: document.getElementById('medTime').value,
-        notes: document.getElementById('medNotes').value.trim()
-    };
+    const name = document.getElementById('medName').value.trim();
+    const dose = document.getElementById('medDose').value.trim();
+    const time = document.getElementById('medTime').value;
+    const notes = document.getElementById('medNotes').value.trim();
+
+    if (!name || !dose || !time) {
+        alert('الرجاء تعبئة جميع الحقول المطلوبة');
+        return;
+    }
+
+    const newMed = { id: Date.now(), name: name, dose: dose, time: time, notes: notes };
     medications.push(newMed);
     saveMeds();
     renderMeds();
     medForm.reset();
-    speak(`تمت إضافة دواء ${newMed.name} بنجاح`);
+    speak('تمت إضافة دواء ' + newMed.name + ' بنجاح');
 });
 
+// ===== عرض الأدوية =====
 function renderMeds() {
     if (medications.length === 0) {
         medsList.innerHTML = '<p class="empty-msg">لا توجد أدوية مضافة بعد. أضف أول دواء من الأعلى 👆</p>';
@@ -81,21 +89,23 @@ function saveMeds() {
 }
 
 function formatTime(time24) {
-    const [h, m] = time24.split(':');
-    const hour = parseInt(h);
+    const parts = time24.split(':');
+    const hour = parseInt(parts[0]);
+    const m = parts[1];
     const ampm = hour >= 12 ? 'مساءً' : 'صباحاً';
     const hour12 = hour % 12 || 12;
-    return `${hour12}:${m} ${ampm}`;
+    return hour12 + ':' + m + ' ' + ampm;
 }
 
+// ===== التحقق من مواعيد الأدوية =====
 function checkMedications() {
     const now = new Date();
-    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const currentTime = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
     const todayKey = now.toDateString();
 
     medications.forEach(med => {
         if (med.time === currentTime) {
-            const alertKey = `${todayKey}-${med.id}-${currentTime}`;
+            const alertKey = todayKey + '-' + med.id + '-' + currentTime;
             if (!alertedToday[alertKey]) {
                 alertedToday[alertKey] = true;
                 triggerAlert(med);
@@ -106,25 +116,22 @@ function checkMedications() {
 
 function triggerAlert(med) {
     if ('Notification' in window && Notification.permission === 'granted') {
-        const notif = new Notification('💊 حان موعد دوائك!', {
-            body: `${med.name} - ${med.dose}${med.notes ? ' (' + med.notes + ')' : ''}`,
-            icon: 'https://cdn-icons-png.flaticon.com/512/2913/2913136.png',
-            requireInteraction: true,
-            vibrate: [200, 100, 200, 100, 200]
-        });
-        notif.onclick = () => {
-            window.focus();
-            notif.close();
-        };
+        try {
+            const notif = new Notification('💊 حان موعد دوائك!', {
+                body: med.name + ' - ' + med.dose + (med.notes ? ' (' + med.notes + ')' : ''),
+                requireInteraction: true
+            });
+            notif.onclick = () => { window.focus(); notif.close(); };
+        } catch (e) { console.log(e); }
     }
 
-    const message = `تنبيه! حان موعد دوائك ${med.name}. قم بتناول ${med.dose} الآن`;
+    const message = 'تنبيه! حان موعد دوائك ' + med.name + '. قم بتناول ' + med.dose + ' الآن';
     speak(message);
-    setTimeout(() => speak(message), 3500);
+    setTimeout(() => speak(message), 4000);
     playBeep();
 
-    alertMedName.textContent = `💊 ${med.name}`;
-    alertMedDose.textContent = `الجرعة: ${med.dose}${med.notes ? ' - ' + med.notes : ''}`;
+    alertMedName.textContent = '💊 ' + med.name;
+    alertMedDose.textContent = 'الجرعة: ' + med.dose + (med.notes ? ' - ' + med.notes : '');
     alertModal.classList.remove('hidden');
 }
 
@@ -173,11 +180,25 @@ takenBtn.addEventListener('click', () => {
     speak('أحسنت! تناولت دوائك. نتمنى لك الصحة والعافية');
 });
 
+// ===== زر اختبار التنبيه =====
+const testBtn = document.getElementById('testBtn');
+if (testBtn) {
+    testBtn.addEventListener('click', () => {
+        triggerAlert({
+            id: 'test',
+            name: 'دواء تجريبي',
+            dose: 'حبة واحدة',
+            notes: 'هذا اختبار للتنبيه'
+        });
+    });
+}
+
 renderMeds();
-setInterval(checkMedications, 30000);
+setInterval(checkMedications, 15000);
 setTimeout(checkMedications, 1000);
 
 if ('speechSynthesis' in window) {
     window.speechSynthesis.onvoiceschanged = () => {
         window.speechSynthesis.getVoices();
     };
+}
